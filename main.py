@@ -1,3 +1,5 @@
+import os
+import asyncio
 import re
 import asyncio
 import time
@@ -8,6 +10,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.filters import Command
 from aiogram import F
+from aiohttp import web
+from aiogram import Bot, Dispatcher
 
 BOT_TOKEN = "7784812888:AAGDbKddmy117EyFPDPsA_FvSJcdXOe5nLc"
 CHANNEL_USERNAME = "@seeyounvkz"
@@ -160,3 +164,69 @@ async def process_post(message: types.Message, state: FSMContext):
 
 if __name__ == "__main__":
     dp.run_polling(bot)
+
+
+async def http_handler(request):
+    """Простой обработчик HTTP-запросов для Render"""
+    return web.Response(text="🤖 Telegram Bot is running!")
+
+
+async def start_http_server(port):
+    """Запуск HTTP-сервера для Render"""
+    app = web.Application()
+    app.router.add_get('/', http_handler)
+    app.router.add_get('/healthcheck', http_handler)
+
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
+    print(f"🌐 HTTP-сервер запущен на порту {port}")
+
+
+async def main():
+    """Основная асинхронная функция"""
+    # Сброс соединения Telegram
+    await hard_reset_telegram_connection()
+
+    # Запуск HTTP-сервера для Render
+    port = int(os.getenv("PORT", 8000))
+    http_task = asyncio.create_task(start_http_server(port))
+
+    # Запуск бота
+    from aiogram import executor
+    bot_task = asyncio.create_task(executor.start_polling(dp, skip_updates=True))
+
+    print("=" * 50)
+    print(f"🤖 Бот успешно запущен!")
+    print(f"📡 HTTP-сервер: порт {port}")
+    print(f"👑 Администратор: ID {ADMIN_ID}")
+    print(f"📢 Канал: {CHANNEL_USERNAME}")
+    print("=" * 50)
+
+    # Ожидание обеих задач
+    await asyncio.gather(http_task, bot_task)
+
+
+if __name__ == "__main__":
+    # Обработка сигналов для корректного завершения
+    def handle_shutdown(signum, frame):
+        print(f"🛑 Получен сигнал {signum}, завершаю работу...")
+        release_lock()
+        sys.exit(0)
+
+
+    # Регистрация обработчиков сигналов
+    signal.signal(signal.SIGTERM, handle_shutdown)
+    signal.signal(signal.SIGINT, handle_shutdown)
+
+    try:
+        # Создание блокировки
+        acquire_lock()
+
+        # Запуск асинхронного приложения
+        asyncio.run(main())
+    except Exception as e:
+        print(f"💥 Критическая ошибка: {e}")
+    finally:
+        release_lock()
